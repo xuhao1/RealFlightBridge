@@ -1,1 +1,1 @@
-from RealflightBridge.realflightbridge import *
+from RealFlightBridge.realflightbridge import *

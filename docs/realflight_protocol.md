@@ -1,5 +1,5 @@
 # FlighAxis
-The protocol for Realflight is called FlightAxis Link.
+The protocol for RealFlight is called FlightAxis Link.
 
 ## FlightAxis Link Q&A
 A good introduction to FlightAxis link is from [forum](https://www.knifeedge.com/forums/index.php?threads/flightaxis-link-q-a.32854/)
@@ -78,7 +78,7 @@ Yes. The ArduPilot project has a standing implementation that works well. Please
 We will provide additional documentation here as soon as possible.
 
 ## Protocol
-Current implementation of Flightaxis data exchange is in C++ [header](https://github.com/ArduPilot/ardupilot/blob/master/libraries/SITL/SIM_FlightAxis.h) and [source](https://github.com/ArduPilot/ardupilot/blob/master/libraries/SITL/SIM_FlightAxis.cpp).
+Current implementation of Flightaxis data exchange is in C++ [header](https://github.com/ArduPilot/ardupilot/blob/master/libraries/SITL/SIM_FlightAxis.h), [source](https://github.com/ArduPilot/ardupilot/blob/master/libraries/SITL/SIM_FlightAxis.cpp) and [Python](https://github.com/camdeno/F16Capstone/blob/main/FlightAxis/flightaxis.py)
 
 ### Network Port
 IP: Localhost (of course)

@@ -1,0 +1,3 @@
+[submodule "models/SITL_Models"]
+	path = models/SITL_Models
+	url = https://github.com/ArduPilot/SITL_Models.git
