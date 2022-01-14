@@ -2,12 +2,33 @@ import requests
 import xml.etree.cElementTree as ET
 import numpy as np
 from .utils import *
-
+import math
 #Reference code: https://github.com/camdeno/F16Capstone/blob/main/FlightAxis/flightaxis.py
 G = np.array([0.0, 0.0, -9.8205])
+import time
+
+class LowpassFilter:
+    def __init__(self, freq_cut):
+        self.fc = freq_cut
+        self.last_value = None
+
+    def input(self, v, dt):
+        if self.last_value is None:
+            self.last_value = v
+        
+        RC = 1.0 / (self.fc * 2 * np.pi)
+        alpha = dt / (RC + dt)
+        if  math.isnan(alpha):
+            alpha = 0
+        v = self.last_value + (alpha* (v-self.last_value))
+        self.last_value = v
+        return v
+    
+    def value(self):
+        return self.last_value
 
 class RealFlightBridge:
-    def __init__(self, IP="127.0.0.1", PORT=18083):
+    def __init__(self, IP="127.0.0.1", PORT=18083,freq_cut=50,freq_cut_acc=20):
         self.IP = IP
         self.PORT = PORT
         self.channels = [0 for i in range(32)]
@@ -17,6 +38,12 @@ class RealFlightBridge:
         self.acc_body = np.array([0.0, 0.0, 0.0])
         self.acc_body_no_g = np.array([0.0, 0.0, 0.0])
         self.quat = np.array([1.0, 0.0, 0.0, 0.0])
+
+        self.ang_vel_filter = LowpassFilter(freq_cut)
+        self.acc_body_filter = LowpassFilter(freq_cut_acc)
+        self.acc_body_no_g_filter = LowpassFilter(freq_cut_acc)
+        self.t = None
+        self.t0 = None
 
     def get_angular_velocity(self):
         return self.angular_velocity
@@ -100,6 +127,7 @@ class RealFlightBridge:
 </soap:Envelope>""")
         if ok:
             print("ResetAircraft success")
+            time.sleep(1)
             return True
         return False
 
@@ -151,12 +179,27 @@ f"""<?xml version='1.0' encoding='UTF-8'?><soap:Envelope xmlns:soap='http://sche
         qx = aircraftState.findall('m-orientationQuaternion-X')[0].text
         qy = aircraftState.findall('m-orientationQuaternion-Y')[0].text
         qz = aircraftState.findall('m-orientationQuaternion-Z')[0].text
+        _t = float(aircraftState.findall('m-currentPhysicsTime-SEC')[0].text)
+        
+        if self.t is None:
+            self.dt = 0.001
+            self.t0 = _t
+            self.t = 0
+        else:
+            t = _t - self.t0
+            self.dt = t - self.t
+            self.t = t
 
         angular_rate = np.array([float(angular_rate_roll), float(angular_rate_pitch), float(angular_rate_yaw)])/360*np.pi
         acc_body = np.array([float(acc_body_x), float(acc_body_y), float(acc_body_z)])
         quat = np.array([float(qw), float(qx), float(qy), float(qz)])
-        self.acc_body = acc_body
-        self.angular_velocity = angular_rate
+
         self.quat = quat
 
+        self.acc_body = acc_body
+        self.angular_velocity = angular_rate
         self.acc_body_no_g = self.acc_body - quaternion_rotate(self.quat, G)
+
+        self.acc_body_filter.input(self.acc_body, self.dt)
+        self.acc_body_no_g_filter.input(self.acc_body_no_g, self.dt)
+        self.ang_vel_filter.input(self.angular_velocity, self.dt)
