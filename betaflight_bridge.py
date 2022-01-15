@@ -50,7 +50,7 @@ class BetaFlightBridge:
         self.sendto_fc_rc_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.recv_fc_output_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-        self.BF_IP = "172.22.234.75"
+        self.BF_IP = "172.21.37.44"
         self.BF_STATE_PORT = 9003
         self.BF_RC_PORT = 9004
         self.BF_OUTPUT_PORT = 9001
@@ -80,6 +80,7 @@ class BetaFlightBridge:
 
         buf = struct.pack(f'd{NUM_RC_CHANNELS}H', t, *chns)
         self.sendto_fc_rc_sock.sendto(buf, (self.BF_IP, self.BF_RC_PORT))
+        print("sendto RC")
 
     def send_status_fc(self, t):
         #Looks like angular, acc, quat are already in NED.
@@ -175,7 +176,6 @@ class MainWindow(QtWidgets.QMainWindow):
         
     def timerEvent(self, e):
         if self.timer_count % 10 == 0:
-            top_win = win32gui.GetWindowText(win32gui.GetForegroundWindow())
             if not self.OK:
                 self.status.setText(f"Wait for RealFlight")
                 self.status.setStyleSheet('color: yellow')
@@ -189,38 +189,38 @@ class MainWindow(QtWidgets.QMainWindow):
         self.status.setText(status)
         self.timer_count += 1
 
-import win32gui
-def callback(hwnd, extra):
-    rect = win32gui.GetWindowRect(hwnd)
-    x = rect[0]
-    y = rect[1]
-    w = rect[2] - x
-    h = rect[3] - y
+# import win32gui
+# def callback(hwnd, extra):
+#     rect = win32gui.GetWindowRect(hwnd)
+#     x = rect[0]
+#     y = rect[1]
+#     w = rect[2] - x
+#     h = rect[3] - y
 
-    if w == 0:
-        w = GetSystemMetrics(0)
-        h = GetSystemMetrics(1)
+#     if w == 0:
+#         w = GetSystemMetrics(0)
+#         h = GetSystemMetrics(1)
 
-    global DCS_X, DCS_Y, DCS_W, DCS_H, DCS_CX, DCS_CY
+#     global DCS_X, DCS_Y, DCS_W, DCS_H, DCS_CX, DCS_CY
 
-    if win32gui.GetWindowText(hwnd) == DCS_WIN_NAME:
-        DCS_X = x
-        DCS_Y = y
-        DCS_W = w
-        DCS_H = h
-        DCS_CX = x + w//2
-        DCS_CY = y + h//2
+#     if win32gui.GetWindowText(hwnd) == DCS_WIN_NAME:
+#         DCS_X = x
+#         DCS_Y = y
+#         DCS_W = w
+#         DCS_H = h
+#         DCS_CX = x + w//2
+#         DCS_CY = y + h//2
 
-        print("Window %s:" % win32gui.GetWindowText(hwnd))
-        print("\tLocation: (%d, %d)" % (x, y))
-        print("\t    Size: (%d, %d)" % (w, h))
-        print("\t    Center: (%d, %d)" % (DCS_CX, DCS_CY))
+#         print("Window %s:" % win32gui.GetWindowText(hwnd))
+#         print("\tLocation: (%d, %d)" % (x, y))
+#         print("\t    Size: (%d, %d)" % (w, h))
+#         print("\t    Center: (%d, %d)" % (DCS_CX, DCS_CY))
 
 if __name__ == "__main__":
     import sys
     # simple_test()
     app = QtWidgets.QApplication(sys.argv)
-    win32gui.EnumWindows(callback, None)
+    # win32gui.EnumWindows(callback, None)
     win = MainWindow()
     win.show()
     sys.exit(app.exec_())
