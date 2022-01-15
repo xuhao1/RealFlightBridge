@@ -47,6 +47,37 @@ class PIDController:
         self.err_int = 0
         self.err_last = None
 
+class PIDFController:
+    def __init__(self, p, i, d, f, lim_int = 1.0):
+        self.p = p
+        self.i = i
+        self.d = d
+        self.f = f
+        self.err_int = 0
+        self.err_last = None
+        if i > 0:
+            self.lim_int = lim_int/i
+        else:
+            self.lim_int = 0
+
+    def control(self, r, y, dt):
+        err = r - y
+        if self.err_last is None:
+            self.err_last = err
+        if dt <=0.002:
+            dt = 0.002
+        self.err_int = float_constrain(self.err_int +err*dt, -self.lim_int, self.lim_int)
+        derr = (err-self.err_last)/dt
+        if math.isnan(derr):
+            derr = 0
+        self.err_last = err
+        return self.p * err + self.i * self.err_int + self.d * derr + self.f*r
+    
+    def reset(self):
+        self.err_int = 0
+        self.err_last = None
+
+
 class NaiveHeliGyro:
     def __init__(self, IP="127.0.0.1"):
         bridge = RealFlightBridge(IP)
@@ -57,12 +88,13 @@ class NaiveHeliGyro:
 
 
         self.pid_yaw = PIDController(0.15, 0.3, 0., 0.8)
-        self.pid_roll = PIDController(0.2, 0.06, 0., 0.2)
-        self.pid_pitch = PIDController(0.2, 0.06, 0.0, 0.2)
-        self.pid_collective = PIDController(0.015, 0.01, 0., 0.2)
+        self.pid_roll = PIDFController(0.12, 0.05, 0., 0.3, 0.1)
+        self.pid_pitch = PIDFController(0.12, 0.05, 0.0, 0.3, 0.1)
+        self.pid_collective = PIDFController(0.015, 0.01, 30, 0.2)
 
-        self.max_ang_vel_yaw = 770/57.3
-        self.max_ang_vel_rp = 600/57.3
+        self.max_ang_vel_yaw = 660/57.3
+        self.max_ang_vel_rp = 140/57.3
+        self.max_acc_b = 30
 
         pygame.display.init()
         pygame.joystick.init()
@@ -71,13 +103,43 @@ class NaiveHeliGyro:
         print(f"Joy {self.joystick.get_name()} axis {JoyAx}")
 
         pygame.event.pump()
-        self.rc_ail0 = self.joystick.get_axis(0)
-        self.rc_ele0 = self.joystick.get_axis(1)
-        self.rc_rud0 = self.joystick.get_axis(4)
+        self.rc_ail0, self.rc_ele0, _, self.rc_rud0 = self.read_joy_AETR_raw()
 
         self.rpm_up_t = 10
+        self.rpm_up_t0 = -1
 
         bridge.update()
+
+    def read_joy_AETR_raw(self):
+        pygame.event.pump()
+        joystick = self.joystick
+        rc_ail = joystick.get_axis(0)
+        rc_ele = (joystick.get_axis(1))
+        rc_rud = -(joystick.get_axis(3))
+        rc_thr = joystick.get_axis(2)
+        return rc_ail, rc_ele, rc_thr, rc_rud
+    
+    def reset_controllers(self):
+        self.pid_yaw.reset()
+        self.pid_roll.reset()
+        self.pid_pitch.reset()
+        self.pid_collective.reset()
+
+    def read_joy_AETR(self):
+        rc_ail, rc_ele, rc_thr, rc_rud = self.read_joy_AETR_raw()
+        if math.fabs(rc_rud) < 0.02:
+            rc_rud = 0
+
+        if math.fabs(rc_ail) < 0.02:
+            rc_ail = 0
+
+        if math.fabs(rc_ele) < 0.02:
+            rc_ele = 0
+            
+        return rc_ail, rc_ele, rc_thr, rc_rud
+    
+    def read_arm(self):
+        return self.joystick.get_axis(4) > 0.75
 
     def update(self):
         aileron = 0.0
@@ -88,24 +150,11 @@ class NaiveHeliGyro:
 
         t = self.bridge.t
         dt = self.bridge.dt
-        joystick = self.joystick
         bridge = self.bridge
         try:
             #Get RC values
-            pygame.event.pump()
-            rc_ail = joystick.get_axis(0) - self.rc_ail0
-            rc_ele = -(joystick.get_axis(1) - self.rc_ele0)
-            rc_rud = -(joystick.get_axis(4) - self.rc_rud0)
-            rc_thr = - joystick.get_axis(2)
 
-            if math.fabs(rc_rud) < 0.02:
-                rc_rud = 0
-
-            if math.fabs(rc_ail) < 0.02:
-                rc_ail = 0
-
-            if math.fabs(rc_ele) < 0.02:
-                rc_ele = 0
+            rc_ail, rc_ele, rc_thr, rc_rud = self.read_joy_AETR()
 
             #Get states
             ang_vel = bridge.ang_vel_filter.value()
@@ -114,24 +163,32 @@ class NaiveHeliGyro:
 
             #Control
             tgt_roll_spd = rc_ail*self.max_ang_vel_rp
-            tgt_pitch_spd = rc_ele*self.max_ang_vel_rp
+            tgt_pitch_spd = rc_ele*-self.max_ang_vel_rp
             tgt_yaw_spd = rc_rud*self.max_ang_vel_yaw
-            rudder = -self.pid_yaw.control((tgt_yaw_spd-ang_vel[2]), dt)
-            aileron = self.pid_roll.control((tgt_roll_spd - ang_vel[0]), dt)
-            elevator = self.pid_pitch.control((tgt_pitch_spd-ang_vel[1]), dt)
 
-            # aileron = rc_ail*1.33
-            elevator = rc_ele*1.33
+            rudder = -self.pid_yaw.control((tgt_yaw_spd-ang_vel[2]), dt)
+            aileron = self.pid_roll.control(tgt_roll_spd, ang_vel[0], dt)
+            elevator = self.pid_pitch.control(tgt_pitch_spd, ang_vel[1], dt)
+
+            # aileron = rc_ail
+            # elevator = rc_ele
             # az_cur = -acc_no_g[2]
             # coll_light = 
-            # collective = rc_thr  + self.pid_collective.control(acc_no_g[2], dt)
+            tgt_acc_b = rc_thr * self.max_acc_b
+            # collective = self.pid_collective.control(tgt_acc_b, -acc_no_g[2], dt)
             collective = rc_thr
 
-            if t < self.rpm_up_t:
-                throttle = (throttle_sp)*t/self.rpm_up_t
-                throttle = (throttle -0.5)*2
+            if self.read_arm():
+                if self.rpm_up_t0 < 0:
+                    self.rpm_up_t0 = t
+                if t < self.rpm_up_t + self.rpm_up_t0:
+                    throttle = (throttle_sp)*(t-self.rpm_up_t0)/self.rpm_up_t
+                    throttle = (throttle -0.5)*2
+                else:
+                    throttle = (throttle_sp -0.5)*2
             else:
-                throttle = (throttle_sp -0.5)*2
+                throttle = -1
+                self.reset_controllers()
 
             #Log
             chns = (np.array(self.bridge.channels) - 0.5)*2
@@ -142,6 +199,7 @@ tgt_ang_vel RPY {tgt_roll_spd*57.3:>+5.1f},{tgt_pitch_spd*57.3:>+5.1f},{tgt_yaw_
 now_ang_vel RPY {ang_vel[0]*57.3:>+5.1f},{ang_vel[1]*57.3:>+5.1f},{ang_vel[2]*57.3:>+5.1f} deg/s
 err_ang_vel RPY {(tgt_roll_spd - ang_vel[0])*57.3:>+5.1f},{(tgt_pitch_spd-ang_vel[1])*57.3:>+5.1f},{(tgt_yaw_spd-ang_vel[2])*57.3:>+5.1f} deg/s
 CTRLS Ail {chns[0]*100:>+5.0f}% Ele {chns[1]*100:>+5.0f}% Coll {chns[2]*100:>+5.0f}% Rud {chns[3]*100:>+5.0f}% Thro {chns[4]*100:>+5.0f}%
+tgt_acc_b {tgt_acc_b/9.8:>+5.1f} cur {acc_no_g[2]/9.8:>+5.1f} g
 acc XYZ {acc[0]/9.8:>+5.1f},{acc[1]/9.8:>+5.1f},{acc[2]/9.8:>+5.1f} g
 acc_no_g XYZ [{acc_no_g[0]/9.8:>+5.1f},{acc_no_g[1]/9.8:>+5.1f},{acc_no_g[2]/9.8:>+5.1f}]g"""
             
