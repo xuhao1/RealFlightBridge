@@ -118,6 +118,10 @@ class RealFlightBridge:
 
     def send_ResetAircraft(self):
         print("Try ResetAircraft")
+        time.sleep(0.1)
+        self.set_controls([0.0, 0.0, -1.0, 0.0, -1.0])
+        self.update()
+
         ok, res = self.soap_request("ResetAircraft", 
 """<?xml version='1.0' encoding='UTF-8'?>
 <soap:Envelope xmlns:soap='http://schemas.xmlsoap.org/soap/envelope/' xmlns:xsd='http://www.w3.org/2001/XMLSchema' xmlns:xsi='http://www.w3.org/2001/XMLSchema-instance'>

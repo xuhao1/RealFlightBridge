@@ -171,7 +171,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setWindowTitle(WIN_NAME)
 
         self.status = QLabel('Wait for DCS Connection', self)
-        self.status.move(30, 80)
+        self.status.move(30, 30)
         self.status.setFont(QFont('Consolas', 15))
         self.status.setFixedSize(DCS_W, 500)
         self.status.setStyleSheet('color: yellow')

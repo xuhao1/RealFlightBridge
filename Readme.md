@@ -1,6 +1,7 @@
 # Introduction
 This is my bridge from [Realflight Simulator](https://www.realflight.com/) (the commerical simulator) via [FlightAxis Link](http://flightaxis.com/) to Flight Controllers.
 The software is for testing flight controller.
+![](./docs/rf.jpg)
 
 # Pre-request
 Purchase RealFlight 9 (or higher) from [Steam](https://store.steampowered.com/app/1070820/RealFlight_95S/) or [Offical website](https://www.realflight.com/).
