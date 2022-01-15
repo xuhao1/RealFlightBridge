@@ -38,6 +38,10 @@ class RealFlightBridge:
         self.acc_body = np.array([0.0, 0.0, 0.0])
         self.acc_body_no_g = np.array([0.0, 0.0, 0.0])
         self.quat = np.array([1.0, 0.0, 0.0, 0.0])
+        
+        self.pos_0 = None
+        self.pos = np.array([0.0, 0.0, 0.0])
+        self.vel = np.array([0.0, 0.0, 0.0])
 
         self.ang_vel_filter = LowpassFilter(freq_cut)
         self.acc_body_filter = LowpassFilter(freq_cut_acc)
@@ -73,7 +77,7 @@ class RealFlightBridge:
         # So we need passthrough configuration in RealFlight
         # For Heli, should be Aileron, Elevator, Pitch, Rudder, Throttle.
         for i in range(len(controls)):
-            self.channels[i] = (controls[i] + 1.0)/2.0
+            self.channels[i] = float_constrain((controls[i] + 1.0)/2.0, 0, 1) 
     
     def soap_request(self, action, req1, keep_alive=False):
         header = {'content-type': "text/xml;charset='UTF-8'",
@@ -185,6 +189,15 @@ f"""<?xml version='1.0' encoding='UTF-8'?><soap:Envelope xmlns:soap='http://sche
         qz = aircraftState.findall('m-orientationQuaternion-Z')[0].text
         _t = float(aircraftState.findall('m-currentPhysicsTime-SEC')[0].text)
         
+
+        x = aircraftState.findall('m-aircraftPositionX-MTR')[0].text
+        y = aircraftState.findall('m-aircraftPositionY-MTR')[0].text
+        z = aircraftState.findall('m-altitudeAGL-MTR')[0].text
+
+        vx = aircraftState.findall('m-velocityWorldU-MPS')[0].text
+        vy = aircraftState.findall('m-velocityWorldV-MPS')[0].text
+        vz = aircraftState.findall('m-velocityWorldW-MPS')[0].text
+
         if self.t is None:
             self.dt = 0.001
             self.t0 = _t
@@ -198,6 +211,14 @@ f"""<?xml version='1.0' encoding='UTF-8'?><soap:Envelope xmlns:soap='http://sche
         acc_body = np.array([float(acc_body_x), float(acc_body_y), float(acc_body_z)])
         quat = np.array([float(qw), float(qx), float(qy), float(qz)])
 
+        pos_ned = np.array([float(y), float(x), -float(z)])
+        vel_ned = np.array([float(vx), float(vy), float(vz)])
+
+        if self.pos_0 is None:
+            self.pos_0 = pos_ned
+        self.pos = pos_ned - self.pos_0
+        self.vel = vel_ned
+        
         self.quat = quat
 
         self.acc_body = acc_body

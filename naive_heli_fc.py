@@ -160,6 +160,9 @@ class NaiveHeliGyro:
             ang_vel = bridge.ang_vel_filter.value()
             acc_no_g = bridge.acc_body_no_g_filter.value()
             acc = bridge.acc_body_filter.value()
+            
+            vel = bridge.vel
+            pos = bridge.pos
 
             #Control
             tgt_roll_spd = rc_ail*self.max_ang_vel_rp
@@ -200,6 +203,8 @@ now_ang_vel RPY {ang_vel[0]*57.3:>+5.1f},{ang_vel[1]*57.3:>+5.1f},{ang_vel[2]*57
 err_ang_vel RPY {(tgt_roll_spd - ang_vel[0])*57.3:>+5.1f},{(tgt_pitch_spd-ang_vel[1])*57.3:>+5.1f},{(tgt_yaw_spd-ang_vel[2])*57.3:>+5.1f} deg/s
 CTRLS Ail {chns[0]*100:>+5.0f}% Ele {chns[1]*100:>+5.0f}% Coll {chns[2]*100:>+5.0f}% Rud {chns[3]*100:>+5.0f}% Thro {chns[4]*100:>+5.0f}%
 tgt_acc_b {tgt_acc_b/9.8:>+5.1f} cur {acc_no_g[2]/9.8:>+5.1f} g
+pos XYZ {pos[0]:>+5.1f},{pos[1]:>+5.1f},{pos[2]:>+5.1f} m
+vel XYZ {vel[0]:>+5.1f},{vel[1]:>+5.1f},{vel[2]:>+5.1f} mps
 acc XYZ {acc[0]/9.8:>+5.1f},{acc[1]/9.8:>+5.1f},{acc[2]/9.8:>+5.1f} g
 acc_no_g XYZ [{acc_no_g[0]/9.8:>+5.1f},{acc_no_g[1]/9.8:>+5.1f},{acc_no_g[2]/9.8:>+5.1f}]g"""
             
