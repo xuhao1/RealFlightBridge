@@ -34,18 +34,27 @@ class RealFlightBridge:
         self.channels = [0 for i in range(32)]
         self.REALFLIGHT_URL = f"http://{IP}:{PORT}"
         self.debug = False
+        self.reset_states()
+
+        self.ang_vel_filter = LowpassFilter(freq_cut)
+        self.acc_body_filter = LowpassFilter(freq_cut_acc)
+        self.acc_body_no_g_filter = LowpassFilter(freq_cut_acc)
+
+    def reset_states(self):
         self.angular_velocity = np.array([0.0, 0.0, 0.0])
         self.acc_body = np.array([0.0, 0.0, 0.0])
         self.acc_body_no_g = np.array([0.0, 0.0, 0.0])
         self.quat = np.array([1.0, 0.0, 0.0, 0.0])
+
+        self.yaw0 = 0
+        self.roll = 0 
+        self.pitch = 0
+        self.yaw = 0
         
         self.pos_0 = None
         self.pos = np.array([0.0, 0.0, 0.0])
         self.vel = np.array([0.0, 0.0, 0.0])
 
-        self.ang_vel_filter = LowpassFilter(freq_cut)
-        self.acc_body_filter = LowpassFilter(freq_cut_acc)
-        self.acc_body_no_g_filter = LowpassFilter(freq_cut_acc)
         self.t = None
         self.t0 = None
 
@@ -78,6 +87,7 @@ class RealFlightBridge:
         # For Heli, should be Aileron, Elevator, Pitch, Rudder, Throttle.
         for i in range(len(controls)):
             self.channels[i] = float_constrain((controls[i] + 1.0)/2.0, 0, 1) 
+            # self.channels[i] = (controls[i] + 1.0)
     
     def soap_request(self, action, req1, keep_alive=False):
         header = {'content-type': "text/xml;charset='UTF-8'",
@@ -125,7 +135,7 @@ class RealFlightBridge:
         time.sleep(0.1)
         self.set_controls([0.0, 0.0, -1.0, 0.0, -1.0])
         self.update()
-
+        self.reset_states()
         ok, res = self.soap_request("ResetAircraft", 
 """<?xml version='1.0' encoding='UTF-8'?>
 <soap:Envelope xmlns:soap='http://schemas.xmlsoap.org/soap/envelope/' xmlns:xsd='http://www.w3.org/2001/XMLSchema' xmlns:xsi='http://www.w3.org/2001/XMLSchema-instance'>
@@ -136,7 +146,9 @@ class RealFlightBridge:
         if ok:
             print("ResetAircraft success")
             time.sleep(1)
+            self.update()
             return True
+
         return False
 
     def send_ExchangeData(self):
@@ -197,19 +209,27 @@ f"""<?xml version='1.0' encoding='UTF-8'?><soap:Envelope xmlns:soap='http://sche
         vx = aircraftState.findall('m-velocityWorldU-MPS')[0].text
         vy = aircraftState.findall('m-velocityWorldV-MPS')[0].text
         vz = aircraftState.findall('m-velocityWorldW-MPS')[0].text
+        angular_rate = np.array([float(angular_rate_roll), float(angular_rate_pitch), -float(angular_rate_yaw)])/360*np.pi
+        acc_body = np.array([float(acc_body_x), float(acc_body_y), float(acc_body_z)])
+        quat = np.array([float(qw), float(qx), float(qy), float(qz)])
+
+        r, p, y = euler_from_quaternion(quat)
 
         if self.t is None:
             self.dt = 0.001
             self.t0 = _t
             self.t = 0
+            self.yaw0 = y
+            self.q0_inv = quaternion_from_euler(0, 0, -y)
         else:
             t = _t - self.t0
             self.dt = t - self.t
             self.t = t
 
-        angular_rate = np.array([float(angular_rate_roll), float(angular_rate_pitch), float(angular_rate_yaw)])/360*np.pi
-        acc_body = np.array([float(acc_body_x), float(acc_body_y), float(acc_body_z)])
-        quat = np.array([float(qw), float(qx), float(qy), float(qz)])
+
+        self.roll = r
+        self.pitch = p
+        self.yaw = y - self.yaw0
 
         pos_ned = np.array([float(y), float(x), -float(z)])
         vel_ned = np.array([float(vx), float(vy), float(vz)])
@@ -219,7 +239,7 @@ f"""<?xml version='1.0' encoding='UTF-8'?><soap:Envelope xmlns:soap='http://sche
         self.pos = pos_ned - self.pos_0
         self.vel = vel_ned
         
-        self.quat = quat
+        self.quat = quaternion_multiply(self.q0_inv, quat) 
 
         self.acc_body = acc_body
         self.angular_velocity = angular_rate

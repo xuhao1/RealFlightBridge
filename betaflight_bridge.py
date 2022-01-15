@@ -5,6 +5,7 @@ import pygame
 import socket
 import struct
 import select
+import numpy as np
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtWidgets import QToolTip, QPushButton, QLabel
@@ -31,7 +32,7 @@ MOTOR_PWM_MAX = 2000
 NUM_PWM_OUT = 8
 
 class BetaFlightBridge:
-    def __init__(self, IP="127.0.0.1"):
+    def __init__(self, IP="127.0.0.1", BF_IP="127.0.0.1"):
         bridge = RealFlightBridge(IP,freq_cut=250,freq_cut_acc=250)
         if not bridge.connect():
             raise("Unable to connect to RealFlight, please check connection!")
@@ -50,7 +51,7 @@ class BetaFlightBridge:
         self.sendto_fc_rc_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.recv_fc_output_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-        self.BF_IP = "172.21.37.44"
+        self.BF_IP = BF_IP
         self.BF_STATE_PORT = 9003
         self.BF_RC_PORT = 9004
         self.BF_OUTPUT_PORT = 9001
@@ -80,19 +81,31 @@ class BetaFlightBridge:
 
         buf = struct.pack(f'd{NUM_RC_CHANNELS}H', t, *chns)
         self.sendto_fc_rc_sock.sendto(buf, (self.BF_IP, self.BF_RC_PORT))
-        print("sendto RC")
 
     def send_status_fc(self, t):
         #Looks like angular, acc, quat are already in NED.
         bridge = self.bridge
         ang_vel = bridge.angular_velocity
         acc_body = bridge.acc_body 
+        # quat = [1.0, 0.0, 0.0, 0.0]
         quat = bridge.quat
+        RCVT = np.array([[0, -1, 0, 0],
+            [-1, 0, 0, 0],
+            [0,0,1,0],
+            [0,0,0,1]])
+        R = quaternion_matrix(quat)
+        R_bf = RCVT@R@RCVT.transpose()
+        q_bf = quaternion_from_matrix(R_bf)
         
         vel = bridge.vel
         pos = bridge.pos
 
-        buf = struct.pack(f'd3d3d4d3d3d', t, *ang_vel, *acc_body, *quat, *vel, *pos)
+        bf_ang_vel = [ang_vel[0],ang_vel[1], ang_vel[2]]
+        bf_acc_body = [-acc_body[0], acc_body[1], acc_body[2]]
+        # bf_acc_body = [0, 0, -9.8]
+        # bf_ang_vel = [0.0, 0.0, 0.0]
+
+        buf = struct.pack(f'd3d3d4d3d3d', t, *bf_ang_vel, *bf_acc_body, *q_bf, *vel, *pos)
         self.sendto_fc_sock.sendto(buf, (self.BF_IP, self.BF_STATE_PORT))
 
     def recv_pwm(self):
@@ -127,9 +140,11 @@ class BetaFlightBridge:
             status = f"""t {t:.1f}s dt {dt*1000:.1f}ms
 RC AETR {rc_ail:+01.2f},{rc_ele:+01.2f},{rc_thr:+01.2f},{rc_rud:+01.2f}
 now_ang_vel RPY {ang_vel[0]*57.3:>+5.1f},{ang_vel[1]*57.3:>+5.1f},{ang_vel[2]*57.3:>+5.1f} deg/s
-CTRLS Ail {chns[0]*100:>+5.0f}% Ele {chns[1]*100:>+5.0f}% Coll {chns[2]*100:>+5.0f}% Rud {chns[3]*100:>+5.0f}% Thro {chns[4]*100:>+5.0f}%
+PWM {chns[0]*100:>+5.0f}% {chns[1]*100:>+5.0f}% {chns[2]*100:>+5.0f}% {chns[3]*100:>+5.0f}% {chns[4]*100:>+5.0f}%
 pos XYZ {pos[0]:>+5.1f},{pos[1]:>+5.1f},{pos[2]:>+5.1f} m
 vel XYZ {vel[0]:>+5.1f},{vel[1]:>+5.1f},{vel[2]:>+5.1f} mps
+Att YPR {bridge.yaw*57.3:>+5.1f},{bridge.pitch*57.3:>+5.1f},{bridge.roll*57.3:>+5.1f} deg
+Att Q {bridge.quat[0]:>+5.1f},{bridge.quat[1]:>+5.1f},{bridge.quat[2]:>+5.1f},{bridge.quat[3]:>+5.1f}
 acc XYZ {acc[0]/9.8:>+5.1f},{acc[1]/9.8:>+5.1f},{acc[2]/9.8:>+5.1f} g
 acc_no_g XYZ [{acc_no_g[0]/9.8:>+5.1f},{acc_no_g[1]/9.8:>+5.1f},{acc_no_g[2]/9.8:>+5.1f}]g"""
             
@@ -143,7 +158,7 @@ acc_no_g XYZ [{acc_no_g[0]/9.8:>+5.1f},{acc_no_g[1]/9.8:>+5.1f},{acc_no_g[2]/9.8
         self.bridge.set_controls(controls)
 
 class MainWindow(QtWidgets.QMainWindow):
-    def __init__(self, parent=None):
+    def __init__(self, RF_IP="127.0.0.1", BF_IP="127.0.0.1", parent=None):
         import pathlib
         path = pathlib.Path(__file__).parent.absolute()
         print(path)
@@ -167,7 +182,7 @@ class MainWindow(QtWidgets.QMainWindow):
         
         self.setGeometry(DCS_X, DCS_Y, DCS_W, DCS_H)
 
-        self.betaflight = BetaFlightBridge()
+        self.betaflight = BetaFlightBridge(RF_IP, BF_IP)
         self.OK = True
 
         self.timer_count = 0
@@ -189,38 +204,38 @@ class MainWindow(QtWidgets.QMainWindow):
         self.status.setText(status)
         self.timer_count += 1
 
-# import win32gui
-# def callback(hwnd, extra):
-#     rect = win32gui.GetWindowRect(hwnd)
-#     x = rect[0]
-#     y = rect[1]
-#     w = rect[2] - x
-#     h = rect[3] - y
+import win32gui
+def callback(hwnd, extra):
+    rect = win32gui.GetWindowRect(hwnd)
+    x = rect[0]
+    y = rect[1]
+    w = rect[2] - x
+    h = rect[3] - y
 
-#     if w == 0:
-#         w = GetSystemMetrics(0)
-#         h = GetSystemMetrics(1)
+    if w == 0:
+        w = GetSystemMetrics(0)
+        h = GetSystemMetrics(1)
 
-#     global DCS_X, DCS_Y, DCS_W, DCS_H, DCS_CX, DCS_CY
+    global DCS_X, DCS_Y, DCS_W, DCS_H, DCS_CX, DCS_CY
 
-#     if win32gui.GetWindowText(hwnd) == DCS_WIN_NAME:
-#         DCS_X = x
-#         DCS_Y = y
-#         DCS_W = w
-#         DCS_H = h
-#         DCS_CX = x + w//2
-#         DCS_CY = y + h//2
+    if win32gui.GetWindowText(hwnd) == DCS_WIN_NAME:
+        DCS_X = x
+        DCS_Y = y
+        DCS_W = w
+        DCS_H = h
+        DCS_CX = x + w//2
+        DCS_CY = y + h//2
 
-#         print("Window %s:" % win32gui.GetWindowText(hwnd))
-#         print("\tLocation: (%d, %d)" % (x, y))
-#         print("\t    Size: (%d, %d)" % (w, h))
-#         print("\t    Center: (%d, %d)" % (DCS_CX, DCS_CY))
+        print("Window %s:" % win32gui.GetWindowText(hwnd))
+        print("\tLocation: (%d, %d)" % (x, y))
+        print("\t    Size: (%d, %d)" % (w, h))
+        print("\t    Center: (%d, %d)" % (DCS_CX, DCS_CY))
 
 if __name__ == "__main__":
     import sys
     # simple_test()
     app = QtWidgets.QApplication(sys.argv)
-    # win32gui.EnumWindows(callback, None)
-    win = MainWindow()
+    win32gui.EnumWindows(callback, None)
+    win = MainWindow(BF_IP="172.21.33.168")
     win.show()
     sys.exit(app.exec_())

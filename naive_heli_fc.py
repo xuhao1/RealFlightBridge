@@ -115,7 +115,7 @@ class NaiveHeliGyro:
         joystick = self.joystick
         rc_ail = joystick.get_axis(0)
         rc_ele = (joystick.get_axis(1))
-        rc_rud = -(joystick.get_axis(3))
+        rc_rud = (joystick.get_axis(3))
         rc_thr = joystick.get_axis(2)
         return rc_ail, rc_ele, rc_thr, rc_rud
     
@@ -169,10 +169,11 @@ class NaiveHeliGyro:
             tgt_pitch_spd = rc_ele*-self.max_ang_vel_rp
             tgt_yaw_spd = rc_rud*self.max_ang_vel_yaw
 
-            rudder = -self.pid_yaw.control((tgt_yaw_spd-ang_vel[2]), dt)
+            rudder = self.pid_yaw.control(tgt_yaw_spd-ang_vel[2], dt)
             aileron = self.pid_roll.control(tgt_roll_spd, ang_vel[0], dt)
             elevator = self.pid_pitch.control(tgt_pitch_spd, ang_vel[1], dt)
 
+            # rudder = rc_rud
             # aileron = rc_ail
             # elevator = rc_ele
             # az_cur = -acc_no_g[2]
