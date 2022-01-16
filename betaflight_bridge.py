@@ -32,7 +32,7 @@ MOTOR_PWM_MAX = 2000
 NUM_PWM_OUT = 8
 
 class BetaFlightBridge:
-    def __init__(self, IP="127.0.0.1", BF_IP="127.0.0.1"):
+    def __init__(self, IP="127.0.0.1"):
         bridge = RealFlightBridge(IP,freq_cut=250,freq_cut_acc=250)
         if not bridge.connect():
             raise("Unable to connect to RealFlight, please check connection!")
@@ -51,7 +51,7 @@ class BetaFlightBridge:
         self.sendto_fc_rc_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.recv_fc_output_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-        self.BF_IP = BF_IP
+        self.BF_IP = "127.0.0.1"
         self.BF_STATE_PORT = 9003
         self.BF_RC_PORT = 9004
         self.BF_OUTPUT_PORT = 9001
@@ -112,6 +112,9 @@ class BetaFlightBridge:
         ready = select.select([self.recv_fc_output_sock], [], [], 0.0001)
         if ready[0]:
             data, addr = self.recv_fc_output_sock.recvfrom(1024)
+            if addr[0] != self.BF_IP:
+                self.BF_IP = addr[0]
+                print("Update BetaFlight IP to", self.BF_IP)
             pwms = struct.unpack(f"{NUM_PWM_OUT}f", data)
             pwms = np.array(pwms)
             pwms = 2*(pwms - MOTOR_PWM_MIN) / (MOTOR_PWM_MAX-MOTOR_PWM_MIN) - 1
@@ -158,7 +161,7 @@ acc_no_g XYZ [{acc_no_g[0]/9.8:>+5.1f},{acc_no_g[1]/9.8:>+5.1f},{acc_no_g[2]/9.8
         self.bridge.set_controls(controls)
 
 class MainWindow(QtWidgets.QMainWindow):
-    def __init__(self, RF_IP="127.0.0.1", BF_IP="127.0.0.1", parent=None):
+    def __init__(self, RF_IP="127.0.0.1", parent=None):
         import pathlib
         path = pathlib.Path(__file__).parent.absolute()
         print(path)
@@ -182,7 +185,7 @@ class MainWindow(QtWidgets.QMainWindow):
         
         self.setGeometry(DCS_X, DCS_Y, DCS_W, DCS_H)
 
-        self.betaflight = BetaFlightBridge(RF_IP, BF_IP)
+        self.betaflight = BetaFlightBridge(RF_IP)
         self.OK = True
 
         self.timer_count = 0
@@ -236,6 +239,6 @@ if __name__ == "__main__":
     # simple_test()
     app = QtWidgets.QApplication(sys.argv)
     win32gui.EnumWindows(callback, None)
-    win = MainWindow(BF_IP="172.21.33.168")
+    win = MainWindow()
     win.show()
     sys.exit(app.exec_())

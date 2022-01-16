@@ -15,5 +15,9 @@ Set-up the settings for Realflight 9 [as](https://www.knifeedge.com/forums/index
 
 ![](./docs/rf_settings.jpg)
 
+# Manual to link Betaflight to RealFlight
+
+
 # Protocol
 The detailed protocol for Realflight (FlightAxis Link) is summarized in [doc](./docs/realflight_protocol.md).
+
