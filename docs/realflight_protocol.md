@@ -1,4 +1,4 @@
-# FlighAxis
+# FlightAxis
 The protocol for RealFlight is called FlightAxis Link.
 
 ## FlightAxis Link Q&A

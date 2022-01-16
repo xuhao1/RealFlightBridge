@@ -16,7 +16,7 @@ Set-up the settings for Realflight 9 [as](https://www.knifeedge.com/forums/index
 ![](./docs/rf_settings.jpg)
 
 # Manual to link Betaflight to RealFlight
-
+To use BetaFlight with RealFlight, please refer to [this guide](https://github.com/xuhao1/betaflight/blob/improve-sitl/docs/SITL/Readme.md).
 
 # Protocol
 The detailed protocol for Realflight (FlightAxis Link) is summarized in [doc](./docs/realflight_protocol.md).
