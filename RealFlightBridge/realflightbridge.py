@@ -40,6 +40,8 @@ class RealFlightBridge:
         self.acc_body_filter = LowpassFilter(freq_cut_acc)
         self.acc_body_no_g_filter = LowpassFilter(freq_cut_acc)
 
+        self.OK = False
+
     def reset_states(self):
         self.angular_velocity = np.array([0.0, 0.0, 0.0])
         self.acc_body = np.array([0.0, 0.0, 0.0])
@@ -95,7 +97,19 @@ class RealFlightBridge:
         if keep_alive:
             header["Connection"] = 'Keep-Alive'
         # print("Header\n", header, "body\n", req1)
-        response = requests.post(self.REALFLIGHT_URL,data=req1,headers=header)
+        try:
+            response = requests.post(self.REALFLIGHT_URL,data=req1,headers=header)
+            if not self.OK:
+                self.OK = True
+                print("Reconnected to RF")
+                self.reset_states()
+                self.connect()
+            self.OK = True
+        except KeyboardInterrupt:
+            exit(0)
+        except:
+            self.OK = False
+            return False, ""
         
         if self.debug:
             print(response.ok, response.content)
@@ -133,7 +147,7 @@ class RealFlightBridge:
     def send_ResetAircraft(self):
         print("Try ResetAircraft")
         time.sleep(0.1)
-        self.set_controls([0.0, 0.0, -1.0, 0.0, -1.0])
+        self.set_controls([-1 for i in range(12)])
         self.update()
         self.reset_states()
         ok, res = self.soap_request("ResetAircraft", 
@@ -179,7 +193,11 @@ f"""<?xml version='1.0' encoding='UTF-8'?><soap:Envelope xmlns:soap='http://sche
 </soap:Envelope>
 """)
         # print("raw", res, "\n")
-        doc = ET.fromstring(res)
+        try:
+            doc = ET.fromstring(res)
+        except:
+            self.reset_states()
+            return
         doc = doc[0][0]
         # print("doc", doc, "\n")
         # all_descendants = list(doc.iter())

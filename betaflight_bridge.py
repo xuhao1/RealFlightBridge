@@ -23,13 +23,13 @@ WIN_NAME = "BetaflightBridge"
 from win32api import GetSystemMetrics
 
 
-RC_PWM_MIN = 1100
-RC_PWM_MAX = 1900
+RC_PWM_MIN = 1000
+RC_PWM_MAX = 2000
 NUM_RC_CHANNELS = 16
 
 MOTOR_PWM_MIN = 1000
 MOTOR_PWM_MAX = 2000
-NUM_PWM_OUT = 8
+NUM_PWM_OUT = 16
 
 class BetaFlightBridge:
     def __init__(self, IP="127.0.0.1"):
@@ -59,7 +59,6 @@ class BetaFlightBridge:
         self.recv_fc_output_sock.bind(("0.0.0.0", self.BF_OUTPUT_PORT))
         self.recv_fc_output_sock.setblocking(0)
 
-
     def read_joy_AETR(self):
         pygame.event.pump()
         joystick = self.joystick
@@ -78,7 +77,6 @@ class BetaFlightBridge:
             v = (joystick.get_axis(i) + 1)/2
             pwm = float_constrain(v*(RC_PWM_MAX - RC_PWM_MIN) + RC_PWM_MIN, RC_PWM_MIN, RC_PWM_MAX) 
             chns[i] = math.floor(pwm)
-
         buf = struct.pack(f'd{NUM_RC_CHANNELS}H', t, *chns)
         self.sendto_fc_rc_sock.sendto(buf, (self.BF_IP, self.BF_RC_PORT))
 
@@ -86,6 +84,7 @@ class BetaFlightBridge:
         #Looks like angular, acc, quat are already in NED.
         bridge = self.bridge
         ang_vel = bridge.angular_velocity
+        # ang_vel = bridge.ang_vel_filter.value()
         acc_body = bridge.acc_body 
         # quat = [1.0, 0.0, 0.0, 0.0]
         quat = bridge.quat
@@ -115,12 +114,16 @@ class BetaFlightBridge:
             if addr[0] != self.BF_IP:
                 self.BF_IP = addr[0]
                 print("Update BetaFlight IP to", self.BF_IP)
-            pwms = struct.unpack(f"{NUM_PWM_OUT}f", data)
+            _data = list(struct.unpack(f"H{NUM_PWM_OUT}f", data))
+            motor_count, pwms = _data[0], _data[1:]
             pwms = np.array(pwms)
             pwms = 2*(pwms - MOTOR_PWM_MIN) / (MOTOR_PWM_MAX-MOTOR_PWM_MIN) - 1
             self.bridge.set_controls(pwms)
 
     def update(self):
+        if not self.bridge.OK:
+            self.bridge.start()
+            return
         t = self.bridge.t
         dt = self.bridge.dt
         bridge = self.bridge
@@ -143,7 +146,7 @@ class BetaFlightBridge:
             status = f"""t {t:.1f}s dt {dt*1000:.1f}ms
 RC AETR {rc_ail:+01.2f},{rc_ele:+01.2f},{rc_thr:+01.2f},{rc_rud:+01.2f}
 now_ang_vel RPY {ang_vel[0]*57.3:>+5.1f},{ang_vel[1]*57.3:>+5.1f},{ang_vel[2]*57.3:>+5.1f} deg/s
-PWM {chns[0]*100:>+5.0f}% {chns[1]*100:>+5.0f}% {chns[2]*100:>+5.0f}% {chns[3]*100:>+5.0f}% {chns[4]*100:>+5.0f}%
+PWM S1 {chns[0]*100:>+5.0f}% S2 {chns[1]*100:>+5.0f}% S3 {chns[2]*100:>+5.0f}% S4 {chns[3]*100:>+5.0f}% S5 {chns[4]*100:>+5.0f}% S6 {chns[5]*100:>+5.0f}%
 pos XYZ {pos[0]:>+5.1f},{pos[1]:>+5.1f},{pos[2]:>+5.1f} m
 vel XYZ {vel[0]:>+5.1f},{vel[1]:>+5.1f},{vel[2]:>+5.1f} mps
 Att YPR {bridge.yaw*57.3:>+5.1f},{bridge.pitch*57.3:>+5.1f},{bridge.roll*57.3:>+5.1f} deg
@@ -157,6 +160,7 @@ acc_no_g XYZ [{acc_no_g[0]/9.8:>+5.1f},{acc_no_g[1]/9.8:>+5.1f},{acc_no_g[2]/9.8
             print("Exit")
             bridge.exit()
         return status
+
     def set_controls(self, controls):
         self.bridge.set_controls(controls)
 
@@ -201,9 +205,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.status.setStyleSheet('color: black')
 
         status = self.betaflight.update()
-
-        if self.timer_count %100 == 0:
-            print(f"{self.timer_count}: {status}\n")
+        # if self.timer_count %100 == 0:
+        #     print(f"{self.timer_count}: {status}\n")
         self.status.setText(status)
         self.timer_count += 1
 
