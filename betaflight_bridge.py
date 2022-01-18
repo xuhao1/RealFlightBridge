@@ -58,6 +58,11 @@ class BetaFlightBridge:
 
         self.recv_fc_output_sock.bind(("0.0.0.0", self.BF_OUTPUT_PORT))
         self.recv_fc_output_sock.setblocking(0)
+        self.last_recv_pwm = time.time() - 10
+        self.recv_pwm_timeout = 0.1
+        self.betaflight_connected = False
+
+        print("Finish initialized. You can start SITL.")
 
     def read_joy_AETR(self):
         pygame.event.pump()
@@ -111,14 +116,29 @@ class BetaFlightBridge:
         ready = select.select([self.recv_fc_output_sock], [], [], 0.0001)
         if ready[0]:
             data, addr = self.recv_fc_output_sock.recvfrom(1024)
-            if addr[0] != self.BF_IP:
-                self.BF_IP = addr[0]
-                print("Update BetaFlight IP to", self.BF_IP)
             _data = list(struct.unpack(f"H{NUM_PWM_OUT}f", data))
             motor_count, pwms = _data[0], _data[1:]
             pwms = np.array(pwms)
             pwms = 2*(pwms - MOTOR_PWM_MIN) / (MOTOR_PWM_MAX-MOTOR_PWM_MIN) - 1
+
+            self.last_recv_pwm = time.time()
+            if not self.betaflight_connected:
+                print("Betaflight connected.")
+            self.betaflight_connected = True
+
+            if addr[0] != self.BF_IP:
+                self.BF_IP = addr[0]
+                print("Update BetaFlight IP to", self.BF_IP)
+
             self.bridge.set_controls(pwms)
+            
+    def checkSITLConnection(self):
+        if time.time() - self.last_recv_pwm > self.recv_pwm_timeout:
+            if self.betaflight_connected:
+                print("Betaflight lost.")
+                self.betaflight_connected = False
+            return False
+        return True
 
     def update(self):
         if not self.bridge.OK:
@@ -127,9 +147,12 @@ class BetaFlightBridge:
         t = self.bridge.t
         dt = self.bridge.dt
         bridge = self.bridge
+
+        self.recv_pwm()
+        if not self.checkSITLConnection():
+            return
+        
         try:
-            #Get RC values
-            self.recv_pwm()
             self.send_status_fc(t)
             self.sendRC(t)
 
@@ -161,9 +184,6 @@ acc_no_g XYZ [{acc_no_g[0]/9.8:>+5.1f},{acc_no_g[1]/9.8:>+5.1f},{acc_no_g[2]/9.8
             bridge.exit()
         return status
 
-    def set_controls(self, controls):
-        self.bridge.set_controls(controls)
-
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(self, RF_IP="127.0.0.1", parent=None):
         import pathlib
@@ -194,7 +214,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.timer_count = 0
         self.timer = QBasicTimer()
-        self.timer.start(0.001, self)
+        self.timer.start(1, self)
         
     def timerEvent(self, e):
         if self.timer_count % 10 == 0:

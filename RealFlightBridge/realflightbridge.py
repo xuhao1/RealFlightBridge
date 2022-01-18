@@ -195,74 +195,74 @@ f"""<?xml version='1.0' encoding='UTF-8'?><soap:Envelope xmlns:soap='http://sche
         # print("raw", res, "\n")
         try:
             doc = ET.fromstring(res)
+
+            doc = doc[0][0]
+            # print("doc", doc, "\n")
+            # all_descendants = list(doc.iter())
+            # print(all_descendants)
+
+            #Looks like it's FLU in Realflight
+            
+            aircraftState = doc.findall('m-aircraftState')[0]
+            angular_rate_yaw = aircraftState.findall('m-yawRate-DEGpSEC')[0].text
+            angular_rate_pitch = aircraftState.findall('m-pitchRate-DEGpSEC')[0].text
+            angular_rate_roll = aircraftState.findall('m-rollRate-DEGpSEC')[0].text
+            acc_body_x = aircraftState.findall('m-accelerationBodyAX-MPS2')[0].text
+            acc_body_y = aircraftState.findall('m-accelerationBodyAY-MPS2')[0].text
+            acc_body_z = aircraftState.findall('m-accelerationBodyAZ-MPS2')[0].text
+
+            qw = aircraftState.findall('m-orientationQuaternion-W')[0].text
+            qx = aircraftState.findall('m-orientationQuaternion-X')[0].text
+            qy = aircraftState.findall('m-orientationQuaternion-Y')[0].text
+            qz = aircraftState.findall('m-orientationQuaternion-Z')[0].text
+            _t = float(aircraftState.findall('m-currentPhysicsTime-SEC')[0].text)
+            
+
+            x = aircraftState.findall('m-aircraftPositionX-MTR')[0].text
+            y = aircraftState.findall('m-aircraftPositionY-MTR')[0].text
+            z = aircraftState.findall('m-altitudeAGL-MTR')[0].text
+
+            vx = aircraftState.findall('m-velocityWorldU-MPS')[0].text
+            vy = aircraftState.findall('m-velocityWorldV-MPS')[0].text
+            vz = aircraftState.findall('m-velocityWorldW-MPS')[0].text
+            angular_rate = np.array([float(angular_rate_roll), float(angular_rate_pitch), -float(angular_rate_yaw)])/360*np.pi
+            acc_body = np.array([float(acc_body_x), float(acc_body_y), float(acc_body_z)])
+            quat = np.array([float(qw), float(qx), float(qy), float(qz)])
+
+            r, p, y = euler_from_quaternion(quat)
+
+            if self.t is None:
+                self.dt = 0.001
+                self.t0 = _t
+                self.t = 0
+                self.yaw0 = y
+                self.q0_inv = quaternion_from_euler(0, 0, -y)
+            else:
+                t = _t - self.t0
+                self.dt = t - self.t
+                self.t = t
+
+
+            self.roll = r
+            self.pitch = p
+            self.yaw = y - self.yaw0
+
+            pos_ned = np.array([float(y), float(x), -float(z)])
+            vel_ned = np.array([float(vx), float(vy), float(vz)])
+
+            if self.pos_0 is None:
+                self.pos_0 = pos_ned
+            self.pos = pos_ned - self.pos_0
+            self.vel = vel_ned
+            
+            self.quat = quaternion_multiply(self.q0_inv, quat) 
+
+            self.acc_body = acc_body
+            self.angular_velocity = angular_rate
+            self.acc_body_no_g = self.acc_body - quaternion_rotate(self.quat, G)
+
+            self.acc_body_filter.input(self.acc_body, self.dt)
+            self.acc_body_no_g_filter.input(self.acc_body_no_g, self.dt)
+            self.ang_vel_filter.input(self.angular_velocity, self.dt)
         except:
             self.reset_states()
-            return
-        doc = doc[0][0]
-        # print("doc", doc, "\n")
-        # all_descendants = list(doc.iter())
-        # print(all_descendants)
-
-        #Looks like it's FLU in Realflight
-        
-        aircraftState = doc.findall('m-aircraftState')[0]
-        angular_rate_yaw = aircraftState.findall('m-yawRate-DEGpSEC')[0].text
-        angular_rate_pitch = aircraftState.findall('m-pitchRate-DEGpSEC')[0].text
-        angular_rate_roll = aircraftState.findall('m-rollRate-DEGpSEC')[0].text
-        acc_body_x = aircraftState.findall('m-accelerationBodyAX-MPS2')[0].text
-        acc_body_y = aircraftState.findall('m-accelerationBodyAY-MPS2')[0].text
-        acc_body_z = aircraftState.findall('m-accelerationBodyAZ-MPS2')[0].text
-
-        qw = aircraftState.findall('m-orientationQuaternion-W')[0].text
-        qx = aircraftState.findall('m-orientationQuaternion-X')[0].text
-        qy = aircraftState.findall('m-orientationQuaternion-Y')[0].text
-        qz = aircraftState.findall('m-orientationQuaternion-Z')[0].text
-        _t = float(aircraftState.findall('m-currentPhysicsTime-SEC')[0].text)
-        
-
-        x = aircraftState.findall('m-aircraftPositionX-MTR')[0].text
-        y = aircraftState.findall('m-aircraftPositionY-MTR')[0].text
-        z = aircraftState.findall('m-altitudeAGL-MTR')[0].text
-
-        vx = aircraftState.findall('m-velocityWorldU-MPS')[0].text
-        vy = aircraftState.findall('m-velocityWorldV-MPS')[0].text
-        vz = aircraftState.findall('m-velocityWorldW-MPS')[0].text
-        angular_rate = np.array([float(angular_rate_roll), float(angular_rate_pitch), -float(angular_rate_yaw)])/360*np.pi
-        acc_body = np.array([float(acc_body_x), float(acc_body_y), float(acc_body_z)])
-        quat = np.array([float(qw), float(qx), float(qy), float(qz)])
-
-        r, p, y = euler_from_quaternion(quat)
-
-        if self.t is None:
-            self.dt = 0.001
-            self.t0 = _t
-            self.t = 0
-            self.yaw0 = y
-            self.q0_inv = quaternion_from_euler(0, 0, -y)
-        else:
-            t = _t - self.t0
-            self.dt = t - self.t
-            self.t = t
-
-
-        self.roll = r
-        self.pitch = p
-        self.yaw = y - self.yaw0
-
-        pos_ned = np.array([float(y), float(x), -float(z)])
-        vel_ned = np.array([float(vx), float(vy), float(vz)])
-
-        if self.pos_0 is None:
-            self.pos_0 = pos_ned
-        self.pos = pos_ned - self.pos_0
-        self.vel = vel_ned
-        
-        self.quat = quaternion_multiply(self.q0_inv, quat) 
-
-        self.acc_body = acc_body
-        self.angular_velocity = angular_rate
-        self.acc_body_no_g = self.acc_body - quaternion_rotate(self.quat, G)
-
-        self.acc_body_filter.input(self.acc_body, self.dt)
-        self.acc_body_no_g_filter.input(self.acc_body_no_g, self.dt)
-        self.ang_vel_filter.input(self.angular_velocity, self.dt)
